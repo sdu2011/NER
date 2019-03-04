@@ -1,8 +1,10 @@
 import os,re
 import jieba.posseg as pseg
 import pycrfsuite
-# -*- coding: utf-8 -*-
 import sys
+from itertools import chain
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.preprocessing import LabelBinarizer
 
 #加载处理过的语料(已经标识了每个字的标签 比如如下:)
 #浙 B-LOC
@@ -42,7 +44,7 @@ def get_seg(sent):
          
          #构建新的特征.词性.字在词中的位置.
          for i in range(len(word)):
-            print(c_index)
+            #print(c_index)
             
             #字在词中的位置.
             loc = ''
@@ -169,18 +171,45 @@ def predict(text,modelname='./model/train.model'):
     text_c = convert(text)
     features = get_features(text_c)
     
-    print(features)
+    #print(features)
     tag_result=tagger.tag(features)
     
     return tag_result
 
 #train(all_features,all_labels)
         
+#模型评价
+#计算对各种命名实体的识别率 
+def measure(X,y_true,modelname='./model/train.model'):
+    tagger = pycrfsuite.Tagger()
+    tagger.open(modelname)
+    y_pred = [tagger.tag(x) for x in X]
+    
+    lb = LabelBinarizer()
+    #print("y_true=\n",y_true)
+    y_true_combined = lb.fit_transform(list(chain.from_iterable(y_true)))
+    #print("y_true_combined=\n",y_true_combined)
+    
+    y_pred_combined = lb.transform(list(chain.from_iterable(y_pred)))
+
+    tagset = set(lb.classes_) - {'O'}
+    tagset = sorted(tagset, key=lambda tag: tag.split('-', 1)[::-1])
+    class_indices = {cls: idx for idx, cls in enumerate(lb.classes_)}
+    
+    
+    report=classification_report(
+        y_true_combined,
+        y_pred_combined,
+        labels=[class_indices[cls] for cls in tagset],
+        target_names=tagset,
+    )
+    print(report)        
         
 if __name__ == '__main__':
     print("usage:python main.py [method] [param]")
     print("usage:python main.py train train_file [modelname]")
     print("usage:python main.py predict text [modelname]")
+    print("usage:python main.py measure [modelname]")
     if sys.argv[1] == 'train':
         file = sys.argv[2]
         features=from_file_to_features(file)
@@ -189,5 +218,9 @@ if __name__ == '__main__':
     elif sys.argv[1] == 'predict':
         text = sys.argv[2]
         print(predict(text))
+    elif sys.argv[1] == 'measure':
+        X=from_file_to_features('./语料/example.test')
+        y=from_file_to_labels('./语料/example.test')
+        measure(X,y)  
         
     
